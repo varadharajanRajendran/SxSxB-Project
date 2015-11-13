@@ -4,7 +4,7 @@ SET ANSI_NULLS ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SSB_UploadMES2LCPLC]		
+CREATE PROCEDURE [dbo].[SSB_UploadMES2LCPLC_old]		
  AS
 
 EXEC [dbo].[SSB_Update_tblMES2LC]

@@ -4,7 +4,7 @@ SET ANSI_NULLS ON
 GO
 
 
-CREATE  PROCEDURE [dbo].[SSB_Update_tblMES2LC]
+CREATE  PROCEDURE [dbo].[SSB_Update_tblMES2LC_old]
 	@ProdLineName  nvarchar(20)
 AS
 

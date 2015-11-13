@@ -3,7 +3,8 @@ GO
 SET ANSI_NULLS ON
 GO
 
-CREATE  PROCEDURE [dbo].[SSB_SIT_GetLCPLC_RTDS_v2]
+
+CREATE  PROCEDURE [dbo].[SSB_SIT_GetLCPLC_RTDS_v1_old]
 		@OrderID	nvarchar(20)		
  AS
 
@@ -29,12 +30,12 @@ DECLARE @OrderCount		int				,
 		@MESValue		nvarchar(20)	,
 		@PLCDataType	nvarchar(50)
 		
- /* SELECT @OrderID='130426425'  */ 
+ /* SELECT @OrderID='130426425'  */
 
  
  SELECT @OrderCount=COUNT([Rowid])
  FROM [SSB].[dbo].[MES2LC]
- WHERE JobID=@OrderID
+ WHERE Job_ID=@OrderID
  
  IF @OrderCount<=0
 	BEGIN
@@ -44,7 +45,7 @@ DECLARE @OrderCount		int				,
  
  SELECT @OrderCount=COUNT([Rowid])
  FROM [SSB].[dbo].[MES2LC]
- WHERE JobID=@OrderID
+ WHERE Job_ID=@OrderID
  IF @OrderCount>0
     BEGIN 
 		INSERT INTO @tblMES2LCMap ([MESFnName],[LCFnName],[PLCDataType])
@@ -96,14 +97,6 @@ DECLARE @OrderCount		int				,
 				SELECT @StartRow=@StartRow+1
 			END	
 	END
-
-INSERT INTO SSB.dbo.MES2LC_Log([orderID],[TagName],[Value],[DataType],[DateTime])
-	SELECT   @orderID,TagName	, ISNULL(Value,0) as Value,DataType,GetDate() FROM  @tblLCDataSet
-
-UPDATE  @tblLCDataSet
-	SET Value= REPLACE(Value,'n/a','0') 
-	WHERE TagName='StopID'
-
 
 SELECT  TagName	, ISNULL(Value,0) as Value,DataType  FROM  @tblLCDataSet
 GO

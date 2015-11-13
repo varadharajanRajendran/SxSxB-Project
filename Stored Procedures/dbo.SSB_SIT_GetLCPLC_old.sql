@@ -4,7 +4,7 @@ SET ANSI_NULLS ON
 GO
 
 
-CREATE  PROCEDURE [dbo].[SSB_SIT_GetLCPLC]
+CREATE  PROCEDURE [dbo].[SSB_SIT_GetLCPLC_old]
 		@OrderID	nvarchar(20)		
  AS
 

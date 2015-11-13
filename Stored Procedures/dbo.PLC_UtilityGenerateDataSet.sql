@@ -1,3 +1,4 @@
+
 SET QUOTED_IDENTIFIER ON
 GO
 SET ANSI_NULLS ON
@@ -45,7 +46,7 @@ INSERT INTO SSB.dbo.Temp_PoOrder (orderID,Seq)
 		INNER JOIN SitmesDB.dbo.POMV_ORDR_PRP_VAL Prop ON Prop.pom_order_id=Po.pom_order_id
 	WHERE pom_custom_fld_name='PreactorSequence'
 		AND Po.pom_order_status_id = @StatusID
-	ORDER BY prop.pom_cf_value ASC
+	ORDER BY CONVERT(INT,prop.pom_cf_value) ASC
 
 IF @ResendData	='0'
 BEGIN
@@ -334,11 +335,11 @@ BEGIN TRY
 	END
 	IF @TransactionType='BC'
 		BEGIN
-			SELECT OrderID,Seq FROM  SSB.dbo.Temp_PoOrder ORDER BY Seq ASC
+			SELECT OrderID,Seq FROM  SSB.dbo.Temp_PoOrder ORDER BY CONVERT(INT,Seq) ASC
 		END
 	ELSE IF @TransactionType='DYN'
 		BEGIN
-			SELECT TOP 180 OrderID,Seq FROM  SSB.dbo.Temp_PoOrder ORDER BY Seq ASC
+			SELECT TOP 180 OrderID,Seq FROM  SSB.dbo.Temp_PoOrder ORDER BY CONVERT(INT,Seq) ASC
 		END
 END TRY
 BEGIN CATCH

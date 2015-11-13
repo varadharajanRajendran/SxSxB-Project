@@ -4,7 +4,7 @@ SET ANSI_NULLS ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SSB_RptGetLCPLC_v1.1]		
+CREATE PROCEDURE [dbo].[SSB_RptGetLCPLC_v1.1_old]		
  AS
 
 
