@@ -3,7 +3,7 @@ GO
 SET ANSI_NULLS ON
 GO
 
-CREATE PROCEDURE [dbo].[PLC_GetStorgeInfo]
+CREATE PROCEDURE [dbo].[PLC_setDynProperties]
 		@OrderID			NVARCHAR(20)	,
 		@transactionType	nvarchar(20)	
  AS
@@ -66,7 +66,7 @@ BEGIN
  				END
 			FROM [SSB].[dbo].[MES2LCDataMap]
 		WHERE [PLCSequence]>0 AND  [PLCSequence]<999
-		AND LCFnName IN ('BFLOC' ,'L1Loc','L2Loc','L3Loc','L4Loc','L5Loc','L6Loc')
+		AND LCFnName IN ('BFLOC' ,'L1Loc','L2Loc','L3Loc','L4Loc','L5Loc','L6Loc','BoxRequired')
 		ORDER BY [PLCSequence]	
 	SELECT	@StartRow=MIN(RowID),
 			@EndRow	=MAX(RowID)
