@@ -3,9 +3,18 @@ GO
 SET ANSI_NULLS ON
 GO
 
-CREATE PROCEDURE [dbo].[SSB_RptGetHGASchedule]		
+CREATE PROCEDURE [dbo].[xl_RptGetHGASchedule]
+	@ProdLine NVARCHAR(20),
+    @ShipmentDate nvarchar(20)		
  AS
 
+ /*
+ DECLARE @ProdLine NVARCHAR(20),
+         @ShipmentDate nvarchar(20)
+
+ SELECT @ProdLine='PCL01',
+	    @ShipmentDate='05-11-2015'
+	*/	 
 DECLARE @tblOrder as table (	rowid			int identity(1,1)	,
 								OrderId			nvarchar(50)		,
 								EstDateTime		datetime			,
@@ -78,9 +87,19 @@ INSERT INTO @tblEstTime (OrderID,seqID)
 		INNER JOIN [SitMesDB].[dbo].POM_ORDER_STATUS Pos ON Pos.Pom_order_Status_pk=Po.Pom_order_Status_pk
 		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
 		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name='PreactorSequence'
-		AND Pos.id='PreProduction'
+
+		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt1 ON Pe.pom_entry_pk = ocf_rt1.pom_entry_pk 
+		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val1 ON ocf_rt1.pom_custom_field_rt_pk = ocf_val1.pom_custom_field_rt_pk
+		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt2 ON Pe.pom_entry_pk = ocf_rt2.pom_entry_pk 
+		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val2 ON ocf_rt2.pom_custom_field_rt_pk = ocf_val2.pom_custom_field_rt_pk
+	WHERE ocf_rt1.pom_custom_fld_name='ShipmentDate'
+		AND ocf_val1.pom_cf_value =@shipmentDate
+		AND ocf_rt2.pom_custom_fld_name='ActualLine'
+		AND ocf_val2.pom_cf_value =@ProdLine
+		AND ocf_rt.pom_custom_fld_name='PreactorSequence'
+		AND Pos.id IN ('PreProduction','Production','Rework')
 	ORDER BY ocf_val.pom_cf_value ASC	
+	
 	/*
 	SELECT Po.Pom_order_id , MAX( DATEADD(minute,-Pe.[estimated_end_time_bias],Pe.[estimated_end_time]))
 	FROM [SitMesDB].[dbo].POM_ORDER AS  Po  
@@ -332,5 +351,4 @@ SELECT '' as 'Group',
 	   ISNULL(o.FTDesc,'')		as 'FT'
 FROM @tblOrder o
 	INNER JOIN [SitMesDB].[dbo].[MMDefinitions] MD ON [DefID]=o.SKU
-	
 GO

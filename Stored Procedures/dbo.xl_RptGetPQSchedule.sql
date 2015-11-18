@@ -3,18 +3,16 @@ GO
 SET ANSI_NULLS ON
 GO
 
-CREATE PROCEDURE [dbo].[SSB_RptGetPQSchedule_v2.0]		
-	@MachineID				nvarchar(20)	,
-	@ShipmentDate			nvarchar(50)	
-AS
-
+CREATE PROCEDURE [dbo].[xl_RptGetPQSchedule]	
+		@MachineID				nvarchar(20)    ,
+	    @ShipmentDate			nvarchar(50)	,
+		@ProdLine				nvarchar(20)    
+AS 
 
 /*
-DECLARE @MachineID				nvarchar(20)	,
-	@ShipmentDate			nvarchar(50)	
-
-SELECT 	@ShipmentDate	= '17-08-2015'	,
-		@MachineID		= 'PQ01'		
+SELECT 	@ShipmentDate	= '05-11-2015'	,
+		@MachineID='PQ01',	
+		@ProdLine='CML01'
 */
 DECLARE	@tblPanelData AS Table	(	RowId			int	IDENTITY		,
 									OrderNo			nvarchar(50)		,
@@ -35,7 +33,11 @@ DECLARE	@tblPanelData AS Table	(	RowId			int	IDENTITY		,
 									L3PNo			nvarchar(50)		,
 									L3Desc			nvarchar(255)		,
 									L4PNo			nvarchar(50)		,
-									L4Desc			nvarchar(255)		,				
+									L4Desc			nvarchar(255)		,			
+									L5PNo			nvarchar(50)		,
+									L5Desc			nvarchar(255)		,
+									L6PNo			nvarchar(50)		,
+									L6Desc			nvarchar(255)		,			
 									NeedleBar		nvarchar(50)		,	
 									NeedleSetting	nvarchar(50)		,	
 									CAMDescription	nvarchar(50)		,
@@ -43,27 +45,39 @@ DECLARE	@tblPanelData AS Table	(	RowId			int	IDENTITY		,
 									PatternLength	decimal(5,2)		,
 									PatternWidth	decimal(5,2)		,
 									PatternType		nvarchar(50)		,
-									
-									TruckID			nvarchar(50)		,
-									StopID			nvarchar(50)		,
-									Shipmentdate	nvarchar(20)		,
-									ShipmentTime	nvarchar(50)		,
 									MachineID		nvarchar(50)		,
 									MachineType		nvarchar(50)		,
-									Seq				int					)
+									Seq				int					,
+									BorderType		nvarchar(20)		)
 DECLARE	@tblProperty AS Table	(	RowId			int	IDENTITY		,
 									EntryID			nvarchar(50)		,
 									Property		nvarchar(50)		,
 									Value			nvarchar(50)		)
 
-INSERT INTO @tblPanelData (orderNo,EntryID,SKU,SKUDesc)
-	SELECT Po.Pom_order_id,Pe.Pom_entry_id,REPLACE(Po.ppr_name,'PPR_',''),MD.Descript
+INSERT INTO @tblPanelData (orderNo,EntryID,SKU,SKUDesc,seq,MachineID,MachineType)
+	SELECT Po.Pom_order_id,Pe.Pom_entry_id,REPLACE(Po.ppr_name,'PPR_',''),MD.Descript,Pe.Sequence,REPLACE(E.equip_id, E4.[equip_id] + '.' + @ProdLine + '.' + E2.[equip_id] + '.',''),CASE(REPLACE(E.equip_id,E4.[equip_id] + '.' + @ProdLine + '.'+ E4.[equip_id] + '.',''))
+						WHEN 'PQ01' THEN 'PAR'
+						WHEN 'PQ02'	THEN 'V16'
+						WHEN 'PQ03' THEN 'V16'
+					 END
 	FROM  [SitMesDB].[dbo].POM_ENTRY Pe
 		INNER JOIN [SitMesDB].[dbo].POM_ORDER Po ON Po.Pom_order_pk=Pe.Pom_order_pk
 		INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.[pom_order_status_pk]=Po.[pom_order_status_pk]
 		INNER JOIN [SitMesDB].[dbo].[MMDefinitions] MD ON MD.[DefID]=REPLACE(Po.ppr_name,'PPR_','')
-	WHERE Pe.Pom_entry_id like '%PanelQuilt%'
-		AND Pos.id='Production'
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E ON E.Equip_pk=Pe.Equip_Pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E2 ON E.[equip_prnt_pk]=E2.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E3 ON E2.[equip_prnt_pk]=E3.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E4 ON E3.[equip_prnt_pk]=E4.Equip_pk
+		INNER JOIN [SitMesDB].[dbo].POM_ENTRY Pe1 ON Pe1.Pom_order_pk=Po.pom_order_pk
+		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe1.pom_entry_pk = ocf_rt.pom_entry_pk 
+		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk					  
+	WHERE E3.[equip_id]=E4.[equip_id] + '.'  + @ProdLine 
+		AND Pos.id IN ('PreProduction','Production','Rework')
+		AND Pe.Pom_entry_id like '%PanelQuilt%'
+		AND ocf_rt.pom_custom_fld_name='ShipmentDate'
+		AND ocf_val.pom_cf_value=@ShipmentDate
+		AND E.equip_id= E4.[equip_id] + '.' + @ProdLine + '.PQ01.' + @MachineID	
+	ORDER BY Pe.Sequence ASC
 UPDATE @tblPanelData 
 	SET SA=ml.def_id
 	FROM @tblPanelData AS o
@@ -77,7 +91,7 @@ INSERT INTO @tblProperty(EntryID,Property,Value)
 		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_entry_id =o.EntryID
 		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
 		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name IN ('PROD_PanelLength','PROD_PanelWidth','PROD_TickingID','PROD_BackingID','PROD_Fill1ID','PROD_Fill2ID','PROD_Fill3ID','PROD_Fill4ID','PROD_NeedleBar','PROD_NeedleSetting','PROD_CAMDescription','PROD_PatLength','PROD_PatWidth','PROD_Shape','PROD_PatType')
+	WHERE ocf_rt.pom_custom_fld_name IN ('PROD_PanelLength','PROD_PanelWidth','PROD_TickingID','PROD_BackingID','PROD_Fill1ID','PROD_Fill2ID','PROD_Fill3ID','PROD_Fill4ID','PROD_Fill5ID','PROD_Fill6ID','PROD_NeedleBar','PROD_NeedleSetting','PROD_CAMDescription','PROD_PatLength','PROD_PatWidth','PROD_Shape','PROD_PatType')
 UPDATE @tblPanelData 
 	SET PanelLength=CONVERT(decimal(5,2),Prop.Value) 
 	FROM @tblProperty Prop
@@ -131,6 +145,20 @@ UPDATE @tblPanelData
 		INNER JOIN [SitMesDB].dbo.MMDefinitions MM on MM.DefID=Prop.Value 
 	WHERE Prop.Property='PROD_Fill4ID'
 UPDATE @tblPanelData 
+	SET L5PNo=Prop.Value ,
+		L5Desc=MM.Descript
+	FROM @tblProperty Prop
+		INNER JOIN @tblPanelData Po ON PO.EntryID=Prop.EntryID
+		INNER JOIN [SitMesDB].dbo.MMDefinitions MM on MM.DefID=Prop.Value 
+	WHERE Prop.Property='PROD_Fill5ID'
+UPDATE @tblPanelData 
+	SET L6PNo=Prop.Value ,
+		L6Desc=MM.Descript
+	FROM @tblProperty Prop
+		INNER JOIN @tblPanelData Po ON PO.EntryID=Prop.EntryID
+		INNER JOIN [SitMesDB].dbo.MMDefinitions MM on MM.DefID=Prop.Value 
+	WHERE Prop.Property='PROD_Fill6ID'
+UPDATE @tblPanelData 
 	SET NeedleBar=Prop.Value 
 	FROM @tblProperty Prop
 		INNER JOIN @tblPanelData Po ON PO.EntryID=Prop.EntryID
@@ -165,50 +193,19 @@ UPDATE @tblPanelData
 	FROM @tblProperty Prop
 		INNER JOIN @tblPanelData Po ON PO.EntryID=Prop.EntryID
 	WHERE Prop.Property='PROD_PatType'
+UPDATE @tblPanelData
+	SET BorderType=  CASE CONVERT(int,ocf_val.pom_cf_value)
+		WHEN '1' THEN 'PT'
+		WHEN '0' THEN 'TT'
+		ELSE 'TT'
+	END 
+	FROM  @tblPanelData  AS o 
+		INNER JOIN [SitMesDB].[dbo].POM_ORDER AS  Po ON Po.Pom_order_id=o.OrderNo
+		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
+		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
+		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
+	WHERE ocf_rt.pom_custom_fld_name='PROD_BorderType'
 
-UPDATE @tblPanelData
-	SET TruckID=CONVERT(nvarchar(20),ocf_val.pom_cf_value)
-	FROM  @tblPanelData  AS o 
-		INNER JOIN [SitMesDB].[dbo].POM_ORDER AS  Po ON Po.Pom_order_id=o.OrderNo
-		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
-		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
-		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name='TruckID'
-UPDATE @tblPanelData
-	SET StopID=CONVERT(nvarchar(20),ocf_val.pom_cf_value)
-	FROM  @tblPanelData  AS o 
-		INNER JOIN [SitMesDB].[dbo].POM_ORDER AS  Po ON Po.Pom_order_id=o.OrderNo
-		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
-		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
-		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name='StopLocationID'
-UPDATE @tblPanelData
-	SET ShipmentDate=CONVERT(nvarchar(20),ocf_val.pom_cf_value)
-	FROM  @tblPanelData  AS o 
-		INNER JOIN [SitMesDB].[dbo].POM_ORDER AS  Po ON Po.Pom_order_id=o.OrderNo
-		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
-		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
-		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name='ShipmentDate'
-UPDATE @tblPanelData
-	SET ShipmentTime=CONVERT(nvarchar(20),ocf_val.pom_cf_value)
-	FROM  @tblPanelData  AS o 
-		INNER JOIN [SitMesDB].[dbo].POM_ORDER AS  Po ON Po.Pom_order_id=o.OrderNo
-		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
-		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
-		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name='ShipmentTime'
-UPDATE @tblPanelData
-	SET seq=Sequence,
-		MachineID=REPLACE(Be.equip_id,'WPB.CML01.PQ01.','')			,
-		MachineType= CASE(REPLACE(Be.equip_id,'WPB.CML01.PQ01.',''))
-						WHEN 'PQ01' THEN 'PAR'
-						WHEN 'PQ02'	THEN 'V16'
-						WHEN 'PQ03' THEN 'V16'
-					 END
-	FROM @tblPanelData o
-		INNER JOIN [SitMesDB].[dbo].POM_ENTRY Pe ON Pe.Pom_entry_id=o.EntryID
-		INNER JOIN [SitMesDB].dbo.BPM_EQUIPMENT Be ON Be.equip_pk = Pe.equip_pk
 
 SELECT	'' as 'Qty'											,
 		OrderNo												,
@@ -220,16 +217,16 @@ SELECT	'' as 'Qty'											,
 		ISNULL(L1Desc,'')			as 'L1Desc'				,			
 		ISNULL(L2Desc,'')			as 'L2Desc'				,			
 		ISNULL(L3Desc,'')			as 'L3Desc'				,			
-		ISNULL(L4Desc,'')			as 'L4Desc'				,				
+		ISNULL(L4Desc,'')			as 'L4Desc'				,
+		ISNULL(L5Desc,'')			as 'L5Desc'				,			
+		ISNULL(L6Desc,'')			as 'L6Desc'				,				
 		ISNULL(NeedleSetting,'')	as 'NeedleSetting'		,	
 		ISNULL(CAMDescription,'')	as 'CAMDescription'		,
 		ISNULL(PanelLength,'')		as 'PanelLength'		,
 		ISNULL(PanelWidth,'')		as 'PanelWidth'			,
-		ISNULL(Shape,'')			as 'Shape'				
+		ISNULL(Shape,'')			as 'Shape'				,
+		ISNULL(BorderType,'')		as 'BorderType'			
 FROM  @tblPanelData
-where MachineID	=@MachineID
-	AND Shipmentdate =@ShipmentDate
-ORDER BY Seq	ASC
 
 
 

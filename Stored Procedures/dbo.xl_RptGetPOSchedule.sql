@@ -3,18 +3,21 @@ GO
 SET ANSI_NULLS ON
 GO
 
-CREATE  PROCEDURE [dbo].[SSB_RptGetPOSchedule]		
+CREATE  PROCEDURE [dbo].[xl_RptGetPOSchedule]
 		@SelOrders				nvarchar(255),
-		@ShipmentDate			nvarchar(50)	
-			
-AS	
+		@ShipmentDate			nvarchar(50),	
+		@ProdLine				nvarchar(50)
+AS
 
+/* Version Initial  08-17-2015
+   Version 2.0      11-02-2015
+        functionality modified to hanldle CML01,PCL01, HYL01 and SpL01 Lines
+*/ 
 
 /*
-DECLARE @ShipmentDate			nvarchar(50)	,
-		@SelOrders				nvarchar(255)
-SELECT 	@ShipmentDate	= '02-09-2015',
-		@SelOrders		='New Orders'
+SELECT  @ProdLine		='CML01',
+		@SelOrders		='Automated Line',
+		@ShipmentDate	='04-10-2015'
 */
 DECLARE	@tblOrder AS Table	(	RowId				int	IDENTITY	,
 								OrderNo				nvarchar(100)	,
@@ -86,30 +89,60 @@ DECLARE @intStartRow			int				,
 	    @SQLStringTruckList		nvarchar(MAX)	,
 		@SQLStringInsertTime	nvarchar(MAX)	,
 	    @SQLStringInsertDate	nvarchar(MAX)	,
-		@SQLStringUpdateCount	nvarchar(MAX)	
-		
-SELECT @SelOrderStatus =CASE @SelOrders
-							WHEN 'New Orders' THEN 'Download'
-							WHEN 'Manual Line'	 THEN 'Distributed_OHM'
-							WHEN 'Automated Line' THEN 'PreProduction'
-						END
-BEGIN  /* Extract Data */
-	IF @SelOrders='New Orders'
+		@SQLStringUpdateCount	nvarchar(MAX)	,
+		@DataCount				int			
+
+IF OBJECT_ID('[SSB].[dbo].[POSchedule]') IS NOT NULL
+BEGIN
+	DROP TABLE [SSB].[dbo].[POSchedule]
+END
+
+IF @SelOrders='New Orders'
 	BEGIN
 		INSERT INTO @tblOrder (orderNo)
-			SELECT (Po.[pom_order_id])
-			  FROM [SitMesDB].[dbo].[POM_ORDER] Po
+			SELECT  Po.Pom_order_id
+			FROM [SitMesDB].[dbo].POM_ORDER AS  Po 
+				INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
+				INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
+				INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
 				INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.[pom_order_status_pk]=Po.[pom_order_status_pk]
-			WHERE Pos.id='PreProduction' or Pos.id='Distributed_OHM'	
+			WHERE ocf_rt.pom_custom_fld_name='ShipmentDate'
+			AND ocf_val.pom_cf_value= @ShipmentDate	
 	END
-	ELSE
+	ELSE IF @SelOrders='Manual Line'
 	BEGIN
 		INSERT INTO @tblOrder (orderNo)
-		SELECT (Po.[pom_order_id])
-		  FROM [SitMesDB].[dbo].[POM_ORDER] Po
-			INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.[pom_order_status_pk]=Po.[pom_order_status_pk]
-		WHERE Pos.id=@SelOrderStatus
+			SELECT  Po.Pom_order_id
+			FROM [SitMesDB].[dbo].POM_ORDER AS  Po 
+				INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.[pom_order_status_pk]=Po.[pom_order_status_pk]
+				INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
+				INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
+				INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
+			WHERE Pos.id ='Distributed_OHM'
+				AND ocf_rt.pom_custom_fld_name='ShipmentDate'
+				AND ocf_val.pom_cf_value= @ShipmentDate
 	END
+	ELSE IF @SelOrders='Automated Line'
+	BEGIN
+		INSERT INTO @tblOrder (orderNo)
+			SELECT  Po.Pom_order_id
+			FROM [SitMesDB].[dbo].POM_ORDER AS  Po 
+				INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.[pom_order_status_pk]=Po.[pom_order_status_pk]
+				INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
+				INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
+				INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
+				INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt2 ON Pe.pom_entry_pk = ocf_rt2.pom_entry_pk 
+				INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val2 ON ocf_rt2.pom_custom_field_rt_pk = ocf_val2.pom_custom_field_rt_pk
+			WHERE Pos.id IN ('PreProduction','Production','Scheduled')
+				AND ocf_rt.pom_custom_fld_name='ShipmentDate'
+				AND ocf_val.pom_cf_value= @ShipmentDate
+				AND ocf_rt2.pom_custom_fld_name='ActualLine'
+				AND ocf_val2.pom_cf_value= @ProdLine
+	END
+
+SELECT @DataCount=COUNT(*) FROM @tblOrder
+IF @DataCount>0
+BEGIN  /* Extract Data */
 	UPDATE @tblOrder
 			SET CoilDesc=MM.Descript 
 			FROM @tblOrder Po
@@ -359,6 +392,7 @@ BEGIN  /* Extract Data */
 		SELECT DISTINCT SKU	,[Description]	,UnitType,[Size],[BedType],[CoreType],Panel	,BorderDec	,MU	,NoofLayers,NoofSides,L1PartDesc,L2PartDesc,L3PartDesc	,L4PartDesc	,L5PartDesc	,L6PartDesc,CoilDesc		
 		FROM  @tblPOProperty
 END
+
 SELECT @OrderCount=COUNT(RowID) FROM @tblPOProperty
 IF 	@OrderCount>0
 BEGIN
@@ -473,9 +507,9 @@ BEGIN
 			SELECT @intStartRow=@intStartRow +1
 		END
 END
-
-END
 	SELECT * FROM [SSB].[dbo].[POSchedule]
+END
+	
 
 
 

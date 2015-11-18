@@ -3,13 +3,17 @@ GO
 SET ANSI_NULLS ON
 GO
 
-
-CREATE PROCEDURE [dbo].[SSB_RptGetBorderDecSchedule]
-	@ShipmentDate nvarchar(50)	
+CREATE PROCEDURE [dbo].[xl_RptGetBorderDecSchedule]
+	@ShipmentDate			nvarchar(50)	,
+	@ProdLine				nvarchar(20)   	
  AS
-/*
-DECLARE @ShipmentDate nvarchar(50)
-SELECT @ShipmentDate='17-08-2015'
+
+ /*
+DECLARE	@ShipmentDate			nvarchar(50)	,
+		@ProdLine				nvarchar(20)    
+
+SELECT 	@ShipmentDate	= '05-11-2015'	,
+		@ProdLine='CML01'	
 */
 
 DECLARE @tblMCCH as table (	rowid				int identity(1,1)	,
@@ -48,7 +52,6 @@ DECLARE @tblBD as table (	rowid				int identity(1,1)	,
 							Sequence			int					,
 							ExWC				nvarchar(50)		,
 							ShipmentDate		nvarchar(50)		)
-
 DECLARE @tblParts as table(	rowid		int identity(1,1)	,
 							EntryId		nvarchar(50)		,
 							ItemClass	nvarchar(50)		,
@@ -60,23 +63,35 @@ DECLARE @tblProp as table(	rowid		int identity(1,1)	,
 							Pvalue		nvarchar(255)		)
 
 INSERT INTO @tblMCCH (OrderId,EntryID,WC,EstStartTime,Sequence)
-	SELECT Po.Pom_order_id,Pe.pom_Entry_id,REPLACE(E.equip_id,'WPB.CML01.BC01.',''),Pe.estimated_start_time,Pe.sequence
+	SELECT Po.Pom_order_id,Pe.pom_Entry_id,REPLACE(E.equip_id, E4.[equip_id] + '.' + @ProdLine + '.BC01.',''),Pe.estimated_start_time,Pe.sequence
 	FROM [SitMesDB].dbo.POM_Entry AS pe 
 		INNER JOIN	[SitMesDB].dbo.POM_Entry_status Pes On Pes.Pom_Entry_status_pk=Pe.Pom_Entry_status_pk
 		INNER JOIN 	[SitMesDB].dbo.POM_Order Po on Po.Pom_order_pk=Pe.Pom_order_pk
 		INNER JOIN 	[SitMesDB].dbo.POM_Order_status PoS on Pos.Pom_order_status_pk=Po.Pom_order_status_pk
 		INNER Join [SitMesDB].[dbo].BPM_EQUIPMENT E on E.equip_pk=Pe.equip_pk
-	WHERE Pe.Pom_entry_id like '%.MCCHL1' 
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E2 ON E.[equip_prnt_pk]=E2.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E3 ON E2.[equip_prnt_pk]=E3.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E4 ON E3.[equip_prnt_pk]=E4.Equip_pk
+		INNER JOIN [SitMesDB].[dbo].POM_ENTRY Pe1 ON Pe1.Pom_order_pk=Po.pom_order_pk
+		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe1.pom_entry_pk = ocf_rt.pom_entry_pk 
+		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk					  
+	WHERE E3.[equip_id]=E4.[equip_id] + '.'  + @ProdLine 
+		AND Pos.id IN ('PreProduction','Production','Rework')
+		AND ocf_rt.pom_custom_fld_name='ShipmentDate'
+		AND ocf_val.pom_cf_value=@ShipmentDate
+	    AND Pe.Pom_entry_id like '%.MCCHL1' 
 		AND Pes.id='Initial'
-		AND Pos.id='PreProduction'
-	ORDER BY Pe.sequence ASC	
+	ORDER BY Pe.Sequence ASC
 INSERT INTO @tblBD (OrderId,EntryID,WC,EstStartTime,Sequence,ExWC)
-	SELECT Po.Pom_order_id,Pe.pom_Entry_id,REPLACE(E.equip_id,'WPB.CML01.BC01.',''),Pe.estimated_start_time,Pe.sequence,o.WC
+	SELECT Po.Pom_order_id,Pe.pom_Entry_id,REPLACE(E.equip_id, E4.[equip_id] + '.' + @ProdLine + '.BC01.',''),Pe.estimated_start_time,Pe.sequence,o.WC
 	FROM @tblMCCH o
 		INNER JOIN [SitMesDB].dbo.POM_ORDER Po ON Po.pom_order_id=o.OrderId
 		INNER JOIN [SitMesDB].dbo.POM_Entry AS pe ON Pe.pom_order_pk=Po.pom_order_pk
 		INNER JOIN	[SitMesDB].dbo.POM_Entry_status Pes On Pes.Pom_Entry_status_pk=Pe.Pom_Entry_status_pk
 		INNER Join [SitMesDB].[dbo].BPM_EQUIPMENT E on E.equip_pk=Pe.equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E2 ON E.[equip_prnt_pk]=E2.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E3 ON E2.[equip_prnt_pk]=E3.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E4 ON E3.[equip_prnt_pk]=E4.Equip_pk
 	WHERE ( Pe.Pom_entry_id like '%.Ribbon1' OR 
 			Pe.Pom_entry_id like '%.Handle1' )
 		AND Pes.id='Initial'
@@ -211,7 +226,7 @@ SELECT Case(WC)
 	   END							as 'WorkCenter',
 	   SKUDesc						as 'SKUDesc'		,
 	   RIGHT(SKU,2)					as 'UnitSize'   ,
-	   TKDesc						as 'TKDesc'		,
+	   ISNULL(TKDesc,'')			as 'TKDesc'		,
 	   ISNULL(RibbonDesc,'')		as 'RibbonDesc'	,
 	   ISNULL(CordDesc,'')			as 'CordDesc'	,
 	   ISNULL(TapeDesc,'')			as 'TapeDesc'	,

@@ -3,9 +3,17 @@ GO
 SET ANSI_NULLS ON
 GO
 
-
-CREATE  PROCEDURE [dbo].[SSB_RptGetFECFoamData]		
+CREATE PROCEDURE [dbo].[xl_RptGetFECFoamData]	
+	@ShipmentDate	nvarchar(20)	,
+	@ProdLine		nvarchar(20)	
 AS
+
+/*
+SELECT @ShipmentDate	='04-11-2015',
+		@ProdLine		='PCL01'	 
+*/
+DECLARE	@tblOrder AS Table	(	RowId				int	IDENTITY	,
+								OrderNo				nvarchar(100)	)
 DECLARE	@tblFECData Table	(	RowId			int	IDENTITY	,
 								PartNo			nvarchar(100)	,
 								FoamType		int				,
@@ -17,22 +25,37 @@ DECLARE	@tblFECData Table	(	RowId			int	IDENTITY	,
 								SYFIDesc		nvarchar(200)	,
 								BSPPNo			nvarchar(50)	,
 								BSPDesc			nvarchar(200)	)
+
 DECLARE @startRow	int				,
 		@EndRow		int				,
 		@SelOrder	nvarchar(20)	,
 		@count		int		
 
+INSERT INTO @tblOrder (orderNo)
+			SELECT  Po.Pom_order_id
+			FROM [SitMesDB].[dbo].POM_ORDER AS  Po 
+				INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.[pom_order_status_pk]=Po.[pom_order_status_pk]
+				INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
+				INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
+				INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
+				INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt2 ON Pe.pom_entry_pk = ocf_rt2.pom_entry_pk 
+				INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val2 ON ocf_rt2.pom_custom_field_rt_pk = ocf_val2.pom_custom_field_rt_pk
+			WHERE Pos.id IN ('PreProduction','Production','Scheduled','To Be Scheduled','Rework','Download')
+				AND ocf_rt.pom_custom_fld_name='ShipmentDate'
+				AND ocf_val.pom_cf_value= @ShipmentDate
+				AND ocf_rt2.pom_custom_fld_name='ActualLine'
+				AND ocf_val2.pom_cf_value= @ProdLine
+
 INSERT INTO @tblFECData (PartNo)
 	SELECT DISTINCT(ml.def_id)	
-	FROM [SitMesDB].[dbo].[POM_ORDER] Po
+	FROM @tblOrder o
+		INNER JOIN [SitMesDB].[dbo].[POM_ORDER] AS Po ON Po.Pom_order_id=o.orderNo
 		INNER JOIN [SitMesDB].[dbo].[POM_ENTRY] AS e ON Po.pom_order_pk = e.pom_order_pk 
 		INNER JOIN [SitMesDB].[dbo].[POM_MATERIAL_SPECIFICATION] AS ms ON e.pom_entry_pk = ms.pom_entry_pk 
 		INNER JOIN [SitMesDB].[dbo].[POM_MATERIAL_LIST] AS ml ON ms.pom_material_specification_pk = ml.pom_material_specification_pk
 		INNER JOIN [SitMesDB].[dbo].[MMDefinitions] MD ON MD.[DefID]=ml.def_id
 		INNER JOIN [SitMesDB].[dbo].[MMClasses] MMC ON MMC.ClassPK=mD.ClassPK
-		INNER JOIN [SitMesDB].[dbo].[POM_ORDER_STATUS] PoS ON PoS.pom_order_status_pk=Po.pom_order_status_pk
-	WHERE PoS.id ='PreProduction'
-		AND  ms.name='CONSUMED' /* PRODUCED */
+	WHERE ms.name='CONSUMED' /* PRODUCED */
 		AND MMC.ClassID IN ('RMFT', 'SABSMY','RMIN')
 		AND e.pom_entry_id like '%.FEC%'
 UPDATE @tblFECData
@@ -51,26 +74,6 @@ UPDATE @tblFECData
 	INNER JOIN [SitMesDB].[dbo].[MMDefinitions] MMD ON MMD.DefPK=MMBIA.DefPK
 	INNER JOIN @tblFECData o ON o.PartNo=MMBA.BomAltName
 WHERE MMD.Descript like '%BSP%'
-UPDATE @tblFECData
-	SET FoamType=CONVERT(int,[PValue])
-	FROM [SitMesDB].[dbo].[MMwDefVerPrpVals] MMD
-	INNER JOIN @tblFECData MUD ON MUD.PartNo= MMD.DefID
-	WHERE PropertyID='FoamType'
-UPDATE @tblFECData
-	SET [Length]=CONVERT(float,[PValue])
-	FROM [SitMesDB].[dbo].[MMwDefVerPrpVals] MMD
-	INNER JOIN @tblFECData MUD ON MUD.PartNo=  MMD.DefID
-	WHERE PropertyID='FOAMTOPPERLENGTH'
-UPDATE @tblFECData
-	SET [Width]=CONVERT(float,[PValue])
-	FROM [SitMesDB].[dbo].[MMwDefVerPrpVals] MMD
-	INNER JOIN @tblFECData MUD ON MUD.PartNo=  MMD.DefID
-	WHERE PropertyID='FOAMTOPPERWIDTH'
-UPDATE @tblFECData
-	SET Thickness=CONVERT(float,[PValue])
-	FROM [SitMesDB].[dbo].[MMwDefVerPrpVals] MMD
-	INNER JOIN @tblFECData MUD ON MUD.PartNo=  MMD.DefID
-	WHERE PropertyID='FOAMTOPPERHEIGHT'
 UPDATE @tblFECData
 	SET StorageLocation=CONVERT(int,[PValue])
 	FROM [SitMesDB].[dbo].[MMwDefVerPrpVals] MMD

@@ -4,12 +4,18 @@ SET ANSI_NULLS ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SSB_RptGetTHCSchedule]
-		@ShipmentDate nvarchar(50)		
+CREATE PROCEDURE [dbo].[xl_RptGetTHCSchedule]
+		@ShipmentDate			nvarchar(50)	,
+		@ProdLine				nvarchar(20)   	
  AS
- /*
-DECLARE @ShipmentDate nvarchar(50)
-SELECT @ShipmentDate='17-08-2015'
+ 
+
+/*
+DECLARE	@ShipmentDate			nvarchar(50)	,
+		@ProdLine				nvarchar(20)    
+
+SELECT 	@ShipmentDate	= '05-11-2015'	,
+		@ProdLine='CML01'	
 */
 
 DECLARE @tblTHC as table (	rowid			int identity(1,1)	,
@@ -48,26 +54,26 @@ DECLARE @tblProp as table(	rowid		int identity(1,1)	,
 							Prop		nvarchar(255)		,
 							Pvalue		nvarchar(255)		)
 
-INSERT INTO @tblTHC (OrderId,EntryID,WC,EstEndTime,Sequence)
-	SELECT Po.Pom_order_id,Pe.pom_Entry_id,REPLACE(E.equip_id,'WPB.CML01.BC01.',''),Pe.estimated_end_time,Pe.sequence
+INSERT INTO @tblTHC (OrderId,EntryID,WC,EstEndTime,Sequence,ShipmentDate)
+	SELECT Po.Pom_order_id,Pe.pom_Entry_id,REPLACE(E.equip_id, E4.[equip_id] + '.' + @ProdLine + '.BC01.',''),Pe.estimated_end_time,Pe.sequence,CONVERT(nvarchar(20),ocf_val.pom_cf_value)
 	FROM [SitMesDB].dbo.POM_Entry AS pe 
 		INNER JOIN	[SitMesDB].dbo.POM_Entry_status Pes On Pes.Pom_Entry_status_pk=Pe.Pom_Entry_status_pk
 		INNER JOIN 	[SitMesDB].dbo.POM_Order Po on Po.Pom_order_pk=Pe.Pom_order_pk
 		INNER JOIN 	[SitMesDB].dbo.POM_Order_status PoS on Pos.Pom_order_status_pk=Po.Pom_order_status_pk
 		INNER Join [SitMesDB].[dbo].BPM_EQUIPMENT E on E.equip_pk=Pe.equip_pk
-	WHERE Pe.Pom_entry_id like '%.THC%'
-		AND Pos.id='PreProduction'
-		/* AND E.equip_id='WPB.CML01.BC01.' + @MachineID */
-	ORDER BY Pe.estimated_end_time ASC	
-
-UPDATE @tblTHC
-	SET ShipmentDate=CONVERT(nvarchar(20),ocf_val.pom_cf_value)
-	FROM  @tblTHC  AS o 
-		INNER JOIN [SitMesDB].[dbo].POM_ORDER AS  Po ON Po.Pom_order_id=o.OrderID
-		INNER JOIN [SitMesDB].[dbo].POM_ENTRY AS Pe ON Pe.Pom_order_pk = Po.Pom_order_pk 
-		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe.pom_entry_pk = ocf_rt.pom_entry_pk 
-		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk
-	WHERE ocf_rt.pom_custom_fld_name='ShipmentDate'
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E2 ON E.[equip_prnt_pk]=E2.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E3 ON E2.[equip_prnt_pk]=E3.Equip_pk
+		INNER JOIN SitMesDB.dbo.BPM_EQUIPMENT E4 ON E3.[equip_prnt_pk]=E4.Equip_pk
+		INNER JOIN [SitMesDB].[dbo].POM_ENTRY Pe1 ON Pe1.Pom_order_pk=Po.pom_order_pk
+		INNER JOIN [SitMesDB].[dbo].POM_CUSTOM_FIELD_RT AS ocf_rt ON Pe1.pom_entry_pk = ocf_rt.pom_entry_pk 
+		INNER JOIN [SitMesDB].dbo.POM_CF_VALUE_RT AS ocf_val ON ocf_rt.pom_custom_field_rt_pk = ocf_val.pom_custom_field_rt_pk					  
+	WHERE E3.[equip_id]=E4.[equip_id] + '.'  + @ProdLine 
+		AND Pos.id IN ('PreProduction','Production','Rework')
+		AND ocf_rt.pom_custom_fld_name='ShipmentDate'
+		AND ocf_val.pom_cf_value=@ShipmentDate
+	    AND Pe.Pom_entry_id like '%.THC%' 
+		AND Pes.id='Initial'
+	ORDER BY Pe.Sequence ASC
 UPDATE @tblTHC
 	SET UnitSize=CONVERT(nvarchar(50),CONVERT(decimal(5,0),ocf_val.pom_cf_value))
 	FROM  @tblTHC  AS o 
@@ -110,7 +116,6 @@ FROM  [SitMesDB].dbo.MMvBomAltPrpVals AS BAPV WITH (NOLOCK)
 	  INNER JOIN  [SitMesDB].dbo.MMProperties AS P WITH (NOLOCK) ON P.PropertyPK = BAPV.PropertyPK 
 	  INNER JOIN  @tblTHC Po ON Po.SKU=D.[DefID]
 WHERE P.PropertyID='MattressSides'	
-
 UPDATE @tblTHC
 	SET SA=ml.def_id
 	FROM  @tblTHC o 
@@ -127,7 +132,6 @@ INSERT INTO @tblParts (OrderId,Itemclass,PartNo,Descripti)
 		INNER JOIN [SitMesDB].dbo.POM_MATERIAL_LIST AS ml ON ms.pom_material_specification_pk = ml.pom_material_specification_pk
 		INNER JOIN [SitMesDB].dbo.MMDefinitions MM on MM.DefID=ml.def_id
 	WHERE ms.name='CONSUMED'
-
 UPDATE @tblTHC
 	SET MCCHPNo=ISNULL(PartNo,'')	,
 		MCCHDesc=ISNULL(Descripti,'')
@@ -185,7 +189,6 @@ SELECT OrderID				as 'OrderNo'			,
 	   ISNULL(MatSides,'')  as 'MatSides'			,
 	   BorderType
 FROM @tblTHC 
-WHERE ShipmentDate=@ShipmentDate
-ORDER BY EstEndTime ASC
+ORDER BY Sequence ASC
 
 GO
